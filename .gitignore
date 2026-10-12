@@ -83,3 +83,8 @@ logs/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+docs/
+
+# n8n files
+n8n/

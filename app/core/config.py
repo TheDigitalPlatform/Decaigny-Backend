@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/app.log"
 
+    # Your Daily Drive (YDD) ERP Settings
+    YDD_BASE_URL: str = "https://api.yourdailydrive.com"
+    YDD_DEALER_ID: str = ""
+    YDD_API_KEY: str = ""
+    YDD_LANGUAGE: str = "nl"
+    YDD_TIMEOUT_SECONDS: int = 30
+
 
     model_config = SettingsConfigDict(
         case_sensitive=True,

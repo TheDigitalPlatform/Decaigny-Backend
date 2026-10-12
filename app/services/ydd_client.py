@@ -30,9 +30,9 @@ class YDDClient:
         language: Optional[str] = None,
         timeout: Optional[int] = None,
     ):
-        self.base_url = (base_url or settings.YDD_BASE_URL).rstrip("/")
-        self.dealer_id = dealer_id or settings.YDD_DEALER_ID
-        self.api_key = api_key or settings.YDD_API_KEY
+        self.base_url = (base_url or settings.YDD_BASE_URL).strip().rstrip("/")
+        self.dealer_id = (dealer_id or settings.YDD_DEALER_ID).strip()
+        self.api_key = (api_key or settings.YDD_API_KEY).strip()
         self.language = language or settings.YDD_LANGUAGE or "nl"
         self.timeout = timeout or settings.YDD_TIMEOUT_SECONDS or 30
 
@@ -44,7 +44,26 @@ class YDDClient:
             "Accept": "application/json",
         }
 
+    def _validate_config(self) -> None:
+        missing = [
+            name
+            for name, value in (
+                ("YDD_BASE_URL", self.base_url),
+                ("YDD_API_KEY", self.api_key),
+                ("YDD_DEALER_ID", self.dealer_id),
+            )
+            if not value
+        ]
+        if missing:
+            message = (
+                f"YDD client is not configured: missing {', '.join(missing)}. "
+                "Set them in .env and restart the server."
+            )
+            logger.error(message)
+            raise YDDClientError(message)
+
     def _get_client(self) -> httpx.Client:
+        self._validate_config()
         return httpx.Client(
             base_url=self.base_url,
             headers=self.headers,

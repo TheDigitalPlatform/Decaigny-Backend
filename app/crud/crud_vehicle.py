@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
-from sqlalchemy import func
+from sqlalchemy import and_, exists, func
 from sqlalchemy.orm import Session, joinedload
 
+from app.models.ai_generation_log import AIGenerationLog
+from app.models.generated_post import GeneratedPost
 from app.models.vehicle import Vehicle
 
 
@@ -217,3 +219,39 @@ def mark_missing_as_sold(db: Session, seen_erp_ids: Set[str]) -> int:
     if count > 0:
         db.flush()
     return count
+
+
+def get_vehicles_pending_post(
+    db: Session,
+    post_type: str,
+    since: datetime,
+    limit: int = 10,
+    max_failures: int = 6,
+) -> List[Vehicle]:
+    has_post = exists().where(
+        and_(GeneratedPost.vehicle_id == Vehicle.id, GeneratedPost.post_type == post_type)
+    )
+    failures = (
+        db.query(func.count(AIGenerationLog.id))
+        .filter(
+            AIGenerationLog.vehicle_id == Vehicle.id,
+            AIGenerationLog.post_type == post_type,
+            AIGenerationLog.status != "success",
+        )
+        .scalar_subquery()
+    )
+
+    query = db.query(Vehicle).options(joinedload(Vehicle.images)).filter(~has_post).filter(failures < max_failures)
+    if post_type == "new_vehicle":
+        query = query.filter(
+            Vehicle.status == "available",
+            Vehicle.is_new_to_us.is_(True),
+            Vehicle.first_seen_at >= since,
+        ).order_by(Vehicle.first_seen_at.asc())
+    else:
+        query = query.filter(
+            Vehicle.status == "sold",
+            Vehicle.sold_at >= since,
+        ).order_by(Vehicle.sold_at.asc())
+
+    return query.limit(limit).all()

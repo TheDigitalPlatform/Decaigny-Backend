@@ -9,6 +9,7 @@ class Prompt(Base):
     name = Column(String(100), unique=True, index=True, nullable=False)
     content = Column(Text, nullable=False)
     description = Column(String(500), nullable=True)
+    prompt_type = Column(String(50), nullable=False, default="tone", server_default="tone", index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(

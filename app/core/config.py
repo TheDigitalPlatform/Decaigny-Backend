@@ -32,6 +32,20 @@ class Settings(BaseSettings):
     YDD_LANGUAGE: str = "nl"
     YDD_TIMEOUT_SECONDS: int = 30
 
+    # Claude AI (Anthropic) Settings
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-5"
+    ANTHROPIC_MAX_TOKENS: int = 1024
+    ANTHROPIC_TEMPERATURE: float = 0.7
+    ANTHROPIC_TIMEOUT_SECONDS: int = 60
+    ANTHROPIC_MAX_RETRIES: int = 1
+
+    # AI post generation
+    AI_DEFAULT_LANGUAGE: str = "nl"
+    AI_MAX_VALIDATION_RETRIES: int = 1
+    AI_PENDING_MAX_AGE_DAYS: int = 7
+    AI_PENDING_BATCH_LIMIT: int = 10
+    AI_MAX_FAILURES_PER_VEHICLE: int = 6
 
     model_config = SettingsConfigDict(
         case_sensitive=True,

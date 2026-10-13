@@ -7,6 +7,15 @@ from .communication_style import (
     SetDefaultCommunicationStyleRequest,
     DefaultCommunicationStyleResponse,
 )
+from .generated_post import (
+    GeneratePostRequest,
+    GeneratedPostRead,
+    AIGenerationLogRead,
+    AIGenerationLogDetail,
+    PostConfigUpdate,
+    DealershipProfileRead,
+    DealershipProfileUpdate,
+)
 from .log import LogLinesResponse
 
 __all__ = [
@@ -23,5 +32,12 @@ __all__ = [
     "CommunicationStyleItem",
     "SetDefaultCommunicationStyleRequest",
     "DefaultCommunicationStyleResponse",
+    "GeneratePostRequest",
+    "GeneratedPostRead",
+    "AIGenerationLogRead",
+    "AIGenerationLogDetail",
+    "PostConfigUpdate",
+    "DealershipProfileRead",
+    "DealershipProfileUpdate",
     "LogLinesResponse",
 ]

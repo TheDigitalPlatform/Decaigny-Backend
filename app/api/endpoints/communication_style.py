@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -20,12 +20,13 @@ router = APIRouter()
 @router.get("", status_code=status.HTTP_200_OK)
 def list_communication_styles(
     active_only: bool = Query(default=False),
+    prompt_type: Optional[str] = Query(default=None, alias="type"),
     db: Session = Depends(get_db),
     _current_user=Depends(get_current_user_from_db),
 ) -> Any:
     """List tone prompts available for draft generation."""
-    logger.info("Listing communication styles | active_only=%s", active_only)
-    prompts = crud_prompt.get_prompts(db, active_only=active_only)
+    logger.info("Listing communication styles | active_only=%s | prompt_type=%s", active_only, prompt_type)
+    prompts = crud_prompt.get_prompts(db, active_only=active_only, prompt_type=prompt_type)
 
     default_val = crud_settings.get_default_communication_style(db)
 

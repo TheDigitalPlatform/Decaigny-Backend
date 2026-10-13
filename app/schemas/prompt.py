@@ -1,6 +1,8 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict
+
+PromptType = Literal["tone", "system", "new_vehicle_template", "sold_vehicle_template"]
 
 
 class PromptBase(BaseModel):
@@ -8,6 +10,7 @@ class PromptBase(BaseModel):
     content: str
     description: Optional[str] = None
     is_active: bool = True
+    prompt_type: PromptType = "tone"
 
 
 class PromptCreate(PromptBase):
@@ -19,6 +22,7 @@ class PromptUpdate(BaseModel):
     content: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    prompt_type: Optional[PromptType] = None
 
 
 class PromptInDBBase(PromptBase):

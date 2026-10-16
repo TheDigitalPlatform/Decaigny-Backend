@@ -63,6 +63,29 @@ jobs:
           fi
           echo "Server host-key entry found."
 
+
+      - name: Check runner public IP and SSH reachability
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -eu
+
+          echo "===== RUNNER PUBLIC IP ====="
+          curl -4 --max-time 10 -fsS https://api.ipify.org
+          echo
+
+          echo "===== TEST SERVER TCP PORT ====="
+          if timeout 10 bash -c \
+            'cat < /dev/null > /dev/tcp/$1/$2' \
+            _ "$DEPLOY_HOST" "$DEPLOY_PORT"; then
+            echo "TCP port is reachable."
+          else
+            echo "TCP port is NOT reachable."
+            exit 1
+          fi
+
+          
       - name: Test SSH connection
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}

@@ -1,0 +1,67 @@
+name: Deploy Decaigny Backend
+
+on:
+  push:
+    branches:
+      - iflair_development
+    paths:
+      - '**'
+      - '.github/workflows/deploy.yml'
+
+  workflow_dispatch:
+
+concurrency:
+  group: decaigny-backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          test -n "$DEPLOY_HOST"
+          ssh-keygen -F "$DEPLOY_HOST" -f ~/.ssh/known_hosts >/dev/null 2>&1 || {
+            echo "Verified host key is not configured."
+            echo "Configure a verified server host key before deployment."
+            exit 1
+          }
+
+      - name: Deploy backend on server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -eu
+
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'set -eu
+             cd /project/backend
+             git fetch origin iflair_development
+             git reset --hard origin/iflair_development
+             cd /project/deployment
+             docker compose build backend
+             docker compose up -d --no-deps backend
+             docker compose ps backend
+             curl --fail --silent --show-error http://127.0.0.1:8006/docs >/dev/null || true'

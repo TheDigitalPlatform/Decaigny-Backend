@@ -18,91 +18,84 @@ jobs:
   deploy:
     name: Deploy Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Diagnose SSH host-key entry
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: |
-          set -eu
-          printf 'Configured host: <%s>\n' "$DEPLOY_HOST"
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" |
-            awk '{print "Known-host entry host: " $1}'
-            
       - name: Configure SSH
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
         run: |
-          set -eu
+          set -euo pipefail
 
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
 
-          test -n "$DEPLOY_SSH_KEY" || {
-            echo "DEPLOY_SSH_KEY secret is missing."
+          : "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY secret is missing}"
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is missing}"
+          : "${DEPLOY_KNOWN_HOSTS:?DEPLOY_KNOWN_HOSTS secret is missing}"
+
+          # Write the key while removing Windows CRLF characters.
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+
+          # Install the independently verified server host key.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+          echo "===== VALIDATE PRIVATE KEY ====="
+          if ! ssh-keygen -y -f "$HOME/.ssh/deploy_key" > /dev/null; then
+            echo "The DEPLOY_SSH_KEY secret is not a valid private SSH key."
             exit 1
-          }
+          fi
+          echo "Private SSH key is valid."
 
-          test -n "$DEPLOY_HOST" || {
-            echo "DEPLOY_HOST secret is missing."
+          echo "===== VERIFY SERVER HOST KEY ENTRY ====="
+          if ! ssh-keygen -F "$DEPLOY_HOST" -f "$HOME/.ssh/known_hosts" > /dev/null; then
+            echo "No known_hosts entry matches DEPLOY_HOST."
+            echo "Check that the entry hostname/IP exactly matches the secret."
             exit 1
-          }
-
-          test -n "$DEPLOY_KNOWN_HOSTS" || {
-            echo "DEPLOY_KNOWN_HOSTS secret is missing."
-            exit 1
-          }
-
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
-          ssh-keygen -F "$DEPLOY_HOST" -f ~/.ssh/known_hosts >/dev/null || {
-            echo "DEPLOY_KNOWN_HOSTS does not contain an entry matching DEPLOY_HOST."
-            exit 1
-          }
-
-          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+          fi
+          echo "Server host-key entry found."
 
       - name: Test SSH connection
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        shell: bash
         run: |
-          set -eu
+          set -euo pipefail
 
-          test -n "$DEPLOY_USER"
-          test -n "$DEPLOY_PORT"
+          : "${DEPLOY_USER:?DEPLOY_USER secret is missing}"
+          : "${DEPLOY_PORT:?DEPLOY_PORT secret is missing}"
 
           ssh \
-            -i ~/.ssh/deploy_key \
+            -i "$HOME/.ssh/deploy_key" \
             -p "$DEPLOY_PORT" \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=15 \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            'printf "SSH authentication successful\n"; id'
+            'set -eu; printf "SSH authentication successful\n"; id'
 
       - name: Deploy backend on server
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        shell: bash
         run: |
-          set -eu
+          set -euo pipefail
 
           ssh \
-            -i ~/.ssh/deploy_key \
+            -i "$HOME/.ssh/deploy_key" \
             -p "$DEPLOY_PORT" \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
@@ -111,15 +104,16 @@ jobs:
             "$DEPLOY_USER@$DEPLOY_HOST" \
             'set -eu
 
+             echo "===== CHECK BACKEND DIRECTORY ====="
              cd /project/backend
 
-             echo "===== VERIFY WORKING TREE ====="
+             echo "===== CHECK CURRENT SOURCE STATUS ====="
              git status --short
 
-             echo "===== FETCH LATEST BACKEND ====="
+             echo "===== FETCH LATEST BACKEND BRANCH ====="
              git fetch origin iflair_development
 
-             echo "===== CHECK DEPLOYMENT COMMIT ====="
+             echo "===== TARGET COMMIT ====="
              git log -1 --oneline origin/iflair_development
 
              echo "===== UPDATE BACKEND SOURCE ====="
@@ -132,6 +126,9 @@ jobs:
              echo "===== RECREATE BACKEND ONLY ====="
              docker compose up -d --no-deps backend
 
+             echo "===== WAIT FOR BACKEND STARTUP ====="
+             sleep 5
+
              echo "===== BACKEND CONTAINER STATUS ====="
              docker compose ps backend
 
@@ -140,7 +137,9 @@ jobs:
 
              echo "===== VERIFY PUBLIC API DOCS ====="
              curl --fail --silent --show-error \
-               --retry 5 --retry-delay 3 --retry-connrefused \
+               --retry 5 \
+               --retry-delay 3 \
+               --retry-connrefused \
                https://api.decaigny.be/docs \
                -o /dev/null
 

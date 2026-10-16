@@ -27,20 +27,61 @@ jobs:
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -eu
+
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
+
+          test -n "$DEPLOY_SSH_KEY" || {
+            echo "DEPLOY_SSH_KEY secret is missing."
+            exit 1
+          }
+
+          test -n "$DEPLOY_HOST" || {
+            echo "DEPLOY_HOST secret is missing."
+            exit 1
+          }
+
+          test -n "$DEPLOY_KNOWN_HOSTS" || {
+            echo "DEPLOY_KNOWN_HOSTS secret is missing."
+            exit 1
+          }
 
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          test -n "$DEPLOY_HOST"
-          ssh-keygen -F "$DEPLOY_HOST" -f ~/.ssh/known_hosts >/dev/null 2>&1 || {
-            echo "Verified host key is not configured."
-            echo "Configure a verified server host key before deployment."
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          ssh-keygen -F "$DEPLOY_HOST" -f ~/.ssh/known_hosts >/dev/null || {
+            echo "DEPLOY_KNOWN_HOSTS does not contain an entry matching DEPLOY_HOST."
             exit 1
           }
+
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null
+
+      - name: Test SSH connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -eu
+
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PORT"
+
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'printf "SSH authentication successful\n"; id'
 
       - name: Deploy backend on server
         env:
@@ -53,15 +94,45 @@ jobs:
           ssh \
             -i ~/.ssh/deploy_key \
             -p "$DEPLOY_PORT" \
+            -o IdentitiesOnly=yes \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
             "$DEPLOY_USER@$DEPLOY_HOST" \
             'set -eu
+
              cd /project/backend
+
+             echo "===== VERIFY WORKING TREE ====="
+             git status --short
+
+             echo "===== FETCH LATEST BACKEND ====="
              git fetch origin iflair_development
+
+             echo "===== CHECK DEPLOYMENT COMMIT ====="
+             git log -1 --oneline origin/iflair_development
+
+             echo "===== UPDATE BACKEND SOURCE ====="
              git reset --hard origin/iflair_development
+
+             echo "===== BUILD BACKEND IMAGE ====="
              cd /project/deployment
              docker compose build backend
+
+             echo "===== RECREATE BACKEND ONLY ====="
              docker compose up -d --no-deps backend
+
+             echo "===== BACKEND CONTAINER STATUS ====="
              docker compose ps backend
-             curl --fail --silent --show-error http://127.0.0.1:8006/docs >/dev/null || true'
+
+             echo "===== BACKEND LOGS ====="
+             docker compose logs --tail=60 backend
+
+             echo "===== VERIFY PUBLIC API DOCS ====="
+             curl --fail --silent --show-error \
+               --retry 5 --retry-delay 3 --retry-connrefused \
+               https://api.decaigny.be/docs \
+               -o /dev/null
+
+             echo "Backend deployment and public API docs check completed successfully."
+            '
